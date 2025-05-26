@@ -1,73 +1,110 @@
 import React, { useState } from 'react';
 import '../styles/Calculator.css';
 
-// PUBLIC_INTERFACE
+/*
+  PUBLIC_INTERFACE
+  Main container for SciCalc Pro - a full-featured scientific calculator UI and logic.
+  Features:
+    - Basic operations: +, -, ×, ÷, .
+    - Scientific functions: sin, cos, tan, log, ln, sqrt, x²
+    - Parentheses, memory (MC, MR, M+, M-)
+    - Clear, Backspace, parens
+    - Keyboard-like layout and color scheme (dark w/ orange accent) per spec
+*/
 const Calculator = () => {
   const [display, setDisplay] = useState('0');
-  const [memory, setMemory] = useState(0);
   const [expression, setExpression] = useState('');
-  const [lastResult, setLastResult] = useState(null);
   const [isNewNumber, setIsNewNumber] = useState(true);
+  const [memory, setMemory] = useState(0);
 
-  // Handle numeric input
+  // Append number or dot to input
+  // PUBLIC_INTERFACE
   const handleNumber = (num) => {
-    if (isNewNumber) {
-      setDisplay(num);
-      setExpression(expression + num);
+    if (display === 'Error' || isNewNumber) {
+      setDisplay(num === '.' ? '0.' : num);
+      setExpression(isNewNumber
+        ? (expression ? expression + num : num)
+        : num
+      );
       setIsNewNumber(false);
     } else {
-      setDisplay(display + num);
+      // Prevent multiple decimals
+      if (num === '.' && display.includes('.')) return;
+      setDisplay(display === '0' && num !== '.' ? num : display + num);
       setExpression(expression + num);
     }
   };
 
-  // Handle basic operations
-  const handleOperator = (operator) => {
-    setExpression(expression + ' ' + operator + ' ');
+  // Handle operator input (+, -, ×, ÷, parens)
+  // PUBLIC_INTERFACE
+  const handleOperator = (op) => {
+    // Prevent consecutive operators
+    if (
+      expression &&
+      /[\+\-\×\÷] $/.test(expression.trim())
+      && op !== '(' && op !== ')'
+    ) {
+      setExpression(expression.trim().slice(0, -1) + op + ' ');
+      return;
+    }
+    // If new open paren, append with space if after number
+    if (op === '(' && /\d$/.test(expression)) {
+      setExpression(expression + ' × (');
+      setDisplay('(');
+    } else {
+      setExpression(expression + ' ' + op + ' ');
+      setDisplay(op);
+    }
     setIsNewNumber(true);
   };
 
-  // Handle scientific functions
-  const handleScientific = (func) => {
-    let result;
-    const number = parseFloat(display);
-
-    switch (func) {
+  // Handle scientific functions (sin, cos, tan, log, ln, sqrt, x²)
+  // PUBLIC_INTERFACE
+  const handleScientific = (fn) => {
+    let val = parseFloat(display);
+    if (isNaN(val)) return;
+    let result = '';
+    switch (fn) {
       case 'sin':
-        result = Math.sin(number * Math.PI / 180);
+        result = Math.sin(val * Math.PI / 180);
         break;
       case 'cos':
-        result = Math.cos(number * Math.PI / 180);
+        result = Math.cos(val * Math.PI / 180);
         break;
       case 'tan':
-        result = Math.tan(number * Math.PI / 180);
+        result = Math.tan(val * Math.PI / 180);
         break;
       case 'log':
-        result = Math.log10(number);
+        result = val <= 0 ? 'Error' : Math.log10(val);
         break;
       case 'ln':
-        result = Math.log(number);
+        result = val <= 0 ? 'Error' : Math.log(val);
         break;
       case 'sqrt':
-        result = Math.sqrt(number);
+        result = val < 0 ? 'Error' : Math.sqrt(val);
         break;
       case 'square':
-        result = number * number;
+        result = Math.pow(val, 2);
         break;
-      default:
-        return;
+      default: return;
     }
-
-    setDisplay(result.toString());
-    setLastResult(result);
+    if (Number.isFinite(result)) {
+      // Remove trailing .0
+      let txt = (+result).toPrecision(10).replace(/(\.[0-9]*[1-9])0+$|\.0+$/, '$1');
+      setDisplay(txt);
+      setExpression(txt);
+    } else {
+      setDisplay('Error');
+      setExpression('');
+    }
     setIsNewNumber(true);
   };
 
-  // Handle memory operations
-  const handleMemory = (operation) => {
-    const currentValue = parseFloat(display);
-    
-    switch (operation) {
+  // Handle memory (MC, MR, M+, M-)
+  // PUBLIC_INTERFACE
+  const handleMemory = (fn) => {
+    const val = parseFloat(display);
+    switch (fn) {
       case 'MC':
         setMemory(0);
         break;
@@ -76,55 +113,88 @@ const Calculator = () => {
         setIsNewNumber(true);
         break;
       case 'M+':
-        setMemory(memory + currentValue);
+        if (!isNaN(val)) setMemory(memory + val);
         setIsNewNumber(true);
         break;
       case 'M-':
-        setMemory(memory - currentValue);
+        if (!isNaN(val)) setMemory(memory - val);
         setIsNewNumber(true);
         break;
-      default:
-        break;
+      default: break;
     }
   };
 
-  // Clear all
+  // PUBLIC_INTERFACE
   const handleClear = () => {
     setDisplay('0');
     setExpression('');
-    setLastResult(null);
     setIsNewNumber(true);
   };
 
-  // Backspace
+  // PUBLIC_INTERFACE
   const handleBackspace = () => {
-    if (display.length > 1) {
-      setDisplay(display.slice(0, -1));
-      setExpression(expression.slice(0, -1));
-    } else {
+    if (display.length === 1 || display === 'Error') {
       setDisplay('0');
       setIsNewNumber(true);
+    } else {
+      setDisplay(display.slice(0, -1));
+      setExpression(expression.slice(0, -1));
     }
   };
 
-  // Calculate result
+  // PUBLIC_INTERFACE
+  function toEvalExpr(expr) {
+    // Replace ops, remove repeated spaces, force multiplication with '(' if needed
+    return expr
+      .replace(/×/g, '*')
+      .replace(/÷/g, '/')
+      .replace(/([0-9])\s*\(/g, '$1*(')
+      .replace(/(\))\s*(\d)/g, ')*$2')
+      .replace(/\s+/g, '');
+  }
+
+  // PUBLIC_INTERFACE
   const calculateResult = () => {
     try {
-      // Replace scientific notation and handle parentheses
-      const sanitizedExpression = expression
-        .replace(/×/g, '*')
-        .replace(/÷/g, '/');
-      
-      const result = Function('"use strict";return (' + sanitizedExpression + ')')();
-      setDisplay(result.toString());
-      setLastResult(result);
-      setExpression(result.toString());
-      setIsNewNumber(true);
-    } catch (error) {
+      let evalExpr = toEvalExpr(expression);
+      // eslint-disable-next-line no-new-func
+      let res = Function(`"use strict";return (${evalExpr})`)();
+      if (!isFinite(res)) throw new Error('Non-finite');
+      // Remove trailing .0s
+      let txt = (+res).toPrecision(10).replace(/(\.[0-9]*[1-9])0+$|\.0+$/, '$1');
+      setDisplay(txt);
+      setExpression(txt);
+    } catch {
       setDisplay('Error');
-      setIsNewNumber(true);
+      setExpression('');
     }
+    setIsNewNumber(true);
   };
+
+  // Button grid map for easy layout
+  const sciRow = [
+    { key: 'sin', label: 'sin' },
+    { key: 'cos', label: 'cos' },
+    { key: 'tan', label: 'tan' },
+    { key: 'log', label: 'log' },
+    { key: 'ln', label: 'ln' },
+    { key: 'sqrt', label: '√' },
+    { key: 'square', label: 'x²' }
+  ];
+  const mainGrid = [
+    [ { label: 'C', fn: handleClear, className: 'clear' }, { label: '⌫', fn: handleBackspace, className: 'backspace' }, { label: '(', fn: () => handleOperator('(') }, { label: ')', fn: () => handleOperator(')') } ],
+    [ { label: '7', fn: () => handleNumber('7') }, { label: '8', fn: () => handleNumber('8') }, { label: '9', fn: () => handleNumber('9') }, { label: '÷', fn: () => handleOperator('÷'), className:'operator' } ],
+    [ { label: '4', fn: () => handleNumber('4') }, { label: '5', fn: () => handleNumber('5') }, { label: '6', fn: () => handleNumber('6') }, { label: '×', fn: () => handleOperator('×'), className:'operator' } ],
+    [ { label: '1', fn: () => handleNumber('1') }, { label: '2', fn: () => handleNumber('2') }, { label: '3', fn: () => handleNumber('3') }, { label: '-', fn: () => handleOperator('-'), className:'operator' } ],
+    [ { label: '0', fn: () => handleNumber('0') }, { label: '.', fn: () => handleNumber('.') }, { label: '=', fn: calculateResult, className:'equals' }, { label: '+', fn: () => handleOperator('+'), className:'operator' } ],
+  ];
+
+  const memBtns = [
+    { key: 'MC', label: 'MC' },
+    { key: 'MR', label: 'MR' },
+    { key: 'M+', label: 'M+' },
+    { key: 'M-', label: 'M-' }
+  ];
 
   return (
     <div className="calculator">
@@ -132,50 +202,34 @@ const Calculator = () => {
         <div className="expression">{expression || '0'}</div>
         <div className="result">{display}</div>
       </div>
-      
       <div className="calculator-buttons">
         <div className="memory-functions">
-          <button onClick={() => handleMemory('MC')}>MC</button>
-          <button onClick={() => handleMemory('MR')}>MR</button>
-          <button onClick={() => handleMemory('M+')}>M+</button>
-          <button onClick={() => handleMemory('M-')}>M-</button>
+          {memBtns.map(btn =>
+            <button key={btn.key} onClick={() => handleMemory(btn.key)}>{btn.label}</button>
+          )}
         </div>
-
         <div className="scientific-functions">
-          <button onClick={() => handleScientific('sin')}>sin</button>
-          <button onClick={() => handleScientific('cos')}>cos</button>
-          <button onClick={() => handleScientific('tan')}>tan</button>
-          <button onClick={() => handleScientific('log')}>log</button>
-          <button onClick={() => handleScientific('ln')}>ln</button>
-          <button onClick={() => handleScientific('sqrt')}>√</button>
-          <button onClick={() => handleScientific('square')}>x²</button>
+          {sciRow.map(btn =>
+            <button
+              key={btn.key}
+              onClick={() => handleScientific(btn.key)}
+              className="scientific"
+              style={btn.key === 'square' ? { gridColumn: 'span 2' } : {}}
+            >
+              {btn.label}
+            </button>
+          )}
         </div>
-
         <div className="main-buttons">
-          <button onClick={handleClear} className="clear">C</button>
-          <button onClick={handleBackspace} className="backspace">⌫</button>
-          <button onClick={() => handleOperator('(')}>(</button>
-          <button onClick={() => handleOperator(')')}>)</button>
-          
-          <button onClick={() => handleNumber('7')}>7</button>
-          <button onClick={() => handleNumber('8')}>8</button>
-          <button onClick={() => handleNumber('9')}>9</button>
-          <button onClick={() => handleOperator('÷')} className="operator">÷</button>
-          
-          <button onClick={() => handleNumber('4')}>4</button>
-          <button onClick={() => handleNumber('5')}>5</button>
-          <button onClick={() => handleNumber('6')}>6</button>
-          <button onClick={() => handleOperator('×')} className="operator">×</button>
-          
-          <button onClick={() => handleNumber('1')}>1</button>
-          <button onClick={() => handleNumber('2')}>2</button>
-          <button onClick={() => handleNumber('3')}>3</button>
-          <button onClick={() => handleOperator('-')} className="operator">-</button>
-          
-          <button onClick={() => handleNumber('0')}>0</button>
-          <button onClick={() => handleNumber('.')}>.</button>
-          <button onClick={calculateResult} className="equals">=</button>
-          <button onClick={() => handleOperator('+')} className="operator">+</button>
+          {mainGrid.flat().map((btn, i) =>
+            <button
+              key={i}
+              onClick={btn.fn}
+              className={btn.className || ''}
+            >
+              {btn.label}
+            </button>
+          )}
         </div>
       </div>
     </div>
